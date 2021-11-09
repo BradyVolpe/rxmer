@@ -5,14 +5,14 @@ This Perl script configure a DOCSIS 3.1 modem that is locked to a downstream OFD
 This document contains more than just documentation of UTSC. Scripts the author has been writing in Perl are now being migrated to Python. Some work has been done to ensure continuity on constomer servers and miminmal imppact. For that purpose, only virtual envirmonments will be used when deploying and testing with Python scripts moving forward. This will be required. As part of this, documementaiton for virtual environments (venv) will be part of the README.md files in each repo where such files are provided, such as this, along with theh respective requirements.txt file.
 
 ## Dependencies
-Perl
-Data::Dumper;
-use Net::Ping;
-use Getopt::Std;
-use Net::SNMP
-TFTP server
-Make sure you open ports
-Ensure the cable modem and CMTS have allowed the modem to send TFTP file to TFTP server
+- Perl
+- Data::Dumper
+- Net::Ping
+- Getopt::Std
+- Net::SNMP
+- TFTP server
+- Make sure you open ports
+- Ensure the cable modem and CMTS have allowed the modem to send TFTP file to TFTP server
 
 ### CentOS / RHEL 7
     yum install perl perl-Data-Dumper
@@ -24,9 +24,11 @@ Ensure the cable modem and CMTS have allowed the modem to send TFTP file to TFTP
 Now run the perl file:
 
 Example arguments:
+    
     perl getRxMER.pl <IP MODE 1=IPv4, 2=IPv6> <CMT IP Address> <CM RW String> <PNM Server IP>
 
 Example usage:
+    
     perl getRxMER.pl 1 10.2.4.100 public 10.1.0.71
 
 When run against a valid modem, you will see output of each MIB (OID). The very final OID will display the following:
@@ -39,6 +41,7 @@ Note that an Integer value of 4 is a success from the cable modem indicating tha
     /var/lib/tftpboot
 
 Looking the /var/lib/tftpboot directory we can see the file has been uploaded as:
+    
     [bradyv@dev1 ~]$ cd /var/lib/tftpboot/
     [bradyv@dev1 tftpboot]$ ll
     -rw-rw----. 1 poller poller 1902 Nov  9 15:09 RxMerData
@@ -57,9 +60,12 @@ Where "RxMerData" is the filename set in the Perl script. If the file does not s
     chown tftpd:tftpd /var/lib/tftpboot
 
 If you are running iptables and want to save your firewall rules
+    
     iptables -I INPUT -p udp --dport 69 -j ACCEPT
     service iptables save
+
 If you want xinetd/tftpd start on boot
+    
     chkconfig xinetd on
 
 I’ve created a tftpd user and added some parameters suggested in the /usr/share/doc/tftp-server-0.49/README.security. As I want to be able to upload files I need -c and -p arguments and I’ve set the umask for the new files 117 (read write permissions for tftpd user and group). These are the lines I’ve modified in the /etc/xinitd.d/tftpd :
@@ -70,4 +76,5 @@ I’ve created a tftpd user and added some parameters suggested in the /usr/shar
 Finally start the xinetd service:
 
     service xinetd start
+
 Your TFTPD server will be running in the UDP 69 port.
