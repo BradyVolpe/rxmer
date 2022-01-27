@@ -19,7 +19,6 @@ This document contains more than just documentation of UTSC. Scripts the author 
     yum install cpan -y
     cpan
         install "Net::Ping"
-        install "Net::Ping"
         install "Getopt::Std"
         install "Net::SNMP"
 
