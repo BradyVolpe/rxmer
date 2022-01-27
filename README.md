@@ -1,8 +1,8 @@
 # RxMER per subcarrier Test File
 This Perl script configure a DOCSIS 3.1 modem that is locked to a downstream OFDM channel and instructs the modem to return an RxMER per subcarrier data as a TFTP file to the defined TFTP server. You must setup a TFTP server, usually done on a Linux server. Configuration of a TFTP server is included as a reference in this document, but it is up to the user to complete this task (NimbleThis does not support TFTP server configuration).
 
-## Overview
-This document contains more than just documentation of UTSC. Scripts the author has been writing in Perl are now being migrated to Python. Some work has been done to ensure continuity on constomer servers and miminmal imppact. For that purpose, only virtual envirmonments will be used when deploying and testing with Python scripts moving forward. This will be required. As part of this, documementaiton for virtual environments (venv) will be part of the README.md files in each repo where such files are provided, such as this, along with theh respective requirements.txt file.
+The following diagram provides a high level concept of the flow between the PNM server and cable modem.
+https://github.com/BradyVolpe/rxmer/blob/main/Architecture.png
 
 ## Dependencies
 - Perl
