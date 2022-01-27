@@ -17,9 +17,11 @@ This document contains more than just documentation of UTSC. Scripts the author 
 ### CentOS / RHEL 7
     yum install perl perl-Data-Dumper
     yum install cpan -y
-    perl –MCPAN –e'install "Net::Ping"
-    perl –MCPAN –e'install "Getopt::Std"
-    perl –MCPAN –e'install "Net::SNMP"
+    cpan
+        install "Net::Ping"
+        install "Net::Ping"
+        install "Getopt::Std"
+        install "Net::SNMP"
 
 ## Usage
 Now run the perl file:
