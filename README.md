@@ -2,7 +2,7 @@
 This Perl script configure a DOCSIS 3.1 modem that is locked to a downstream OFDM channel and instructs the modem to return an RxMER per subcarrier data as a TFTP file to the defined TFTP server. You must setup a TFTP server, usually done on a Linux server. Configuration of a TFTP server is included as a reference in this document, but it is up to the user to complete this task (NimbleThis does not support TFTP server configuration).
 
 The following diagram provides a high level concept of the flow between the PNM server and cable modem.
-https://github.com/BradyVolpe/rxmer/blob/main/Architecture.png
+![Architecture](https://github.com/BradyVolpe/rxmer/blob/main/Architecture.png)
 
 ## Dependencies
 - Perl
