@@ -26,11 +26,6 @@ install "Net::SNMP"
 
 ### Perl Script
 Run the Perl file with the following command:
-
-## Usage
-
-### Perl Script
-Run the Perl file with the following command:
 perl getRxMER.pl <IP MODE 1=IPv4, 2=IPv6> <CMT IP Address> <CM RW String> <PNM Server IP>
 
 Example:
