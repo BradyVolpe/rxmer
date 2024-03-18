@@ -35,7 +35,7 @@ cpan
 install Net::Ping
 install Getopt::Std
 install Net::SNMP
-
+```
 ## Usage
 
 Both scripts are designed to obtain RxMER per subcarrier data from a cable modem. Use the appropriate script based on your scripting environment or preference.
@@ -46,7 +46,7 @@ To run the Perl script, use the following command:
 
 ```Perl
 perl getRxMER.pl <IP MODE 1=IPv4, 2=IPv6> <CMT IP Address> <CM RW String> <PNM Server IP>
-
+```
 To run the bash script, use the following command:
 
 ```bash
