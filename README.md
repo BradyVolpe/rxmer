@@ -53,7 +53,9 @@ To run the bash script, use the following command:
 sh getRxMER.sh <IP MODE 1=IPv4, 2=IPv6> <CMT IP Address> <CM RW String> <PNM Server IP>
 ```
 Example 
+```
 sh getRxMER.sh 1 10.2.4.100 private 10.1.0.176
+```
 
 ### TFTP Server Configuration
 Refer to the following steps for a suggested TFTP server configuration:
