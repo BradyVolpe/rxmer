@@ -27,7 +27,7 @@ prefixSnmpWalkCm="snmpbulkwalk -v 2c -Cr1 -c $cmrw $cmip"
 
 # ********************************************
 # *** Use / Run CM Tests
-# *** DOCS-PNM-MIB 
+# *** DOCS-PNM-MIB
 # ********************************************
 
 # All returned data from the modem is done by TFTP bulk upload.  In order to get the TFTP file we must first set parameters
@@ -36,21 +36,21 @@ prefixSnmpWalkCm="snmpbulkwalk -v 2c -Cr1 -c $cmrw $cmip"
 
 echo "*******************************************************************"
 echo "Configure basic settings on the Cable Modem and TFTP Server."
-echo "*******************************************************************\n"
+echo -e "*******************************************************************\n"
 
 echo "IP address of modem is: $cmip"
 echo "Getting modem info:"
 sysDescr='1.3.6.1.2.1.1.1.0'
 modemInfo=$($prefixSnmpWalkCm $sysDescr)
-echo "$modemInfo\n"
+echo -e "$modemInfo\n"
 
 # This sets the IP type of TFTP server (1 = IPv4, 2 = IPv6)
 docsPnmBulkDestIpAddrType='.1.3.6.1.4.1.4491.2.1.27.1.1.1.1.0'
-echo "IP Mode: $ipmode\n"
+echo -e "IP Mode: $ipmode\n"
 
 setIpType=$($prefixSnmpSetCm $docsPnmBulkDestIpAddrType i $ipmode)
 echo "Setting the IP address type (1 = IPv4, 2 = IPv6):"
-echo "$setIpType\n"
+echo -e "$setIpType\n"
 
 # Convert the PNM Server IP address from decimal to hex
 hex_addr=0
@@ -61,20 +61,20 @@ else
     IFS='.' read -r -a ip_array <<< "$pnmServerIp"
     hex_addr=$(printf '0x%02X%02X%02X%02X' "${ip_array[@]}")
 fi
-echo "TFTP Server Hex Address is: $hex_addr \n"
+echo -e "TFTP Server Hex Address is: $hex_addr \n"
 
 # Set the Destination IP address of the PNM server in Hex format
 docsPnmBulkDestIpAddr='.1.3.6.1.4.1.4491.2.1.27.1.1.1.2.0'
 setIP=$($prefixSnmpSetCm $docsPnmBulkDestIpAddr x $hex_addr)
 echo "Set TFTP Server Hex Set:"
-echo "$setIP\n"
+echo -e "$setIP\n"
 
 # Set the directory on the PNM server where TFTP files will be uploaded --> Defaults to TFTP root
-#dir=""
+dir=""
 docsPnmBulkDestPath='.1.3.6.1.4.1.4491.2.1.27.1.1.1.3.0'
-#setPath=$($prefixSnmpSetCm $docsPnmBulkDestPath s "$dir")
-#echo "Set Path (Should be ''):"
-#echo "$setPath"
+setPath=$($prefixSnmpSetCm $docsPnmBulkDestPath s "$dir")
+echo "Set Path (Should be ''):"
+echo "$setPath"
 
 # Set TFTP upload on modem INTEGER { other ( 1 ), tftpUpload ( 2 ), cancelUpload ( 3 ), deleteFile ( 4 ) }
 docsPnmBulkFileControl='.1.3.6.1.4.1.4491.2.1.27.1.1.2.1.3.0'
@@ -84,7 +84,7 @@ setAutoload=$($prefixSnmpSetCm $docsPnmBulkFileControl i 4)
 docsPnmBulkUploadControl='.1.3.6.1.4.1.4491.2.1.27.1.1.1.4.0'
 setUpload=$($prefixSnmpSetCm $docsPnmBulkUploadControl i 3)
 echo "Set upload to auto (Should = 3):"
-echo "$setUpload\n"
+echo -e "$setUpload\n"
 
 # For configuring TFTP on the PNM server refer to:
 # http://blog.zwiegnet.com/linux-server/configure-tftp-server-centos-6/
@@ -96,27 +96,27 @@ echo "*******************************************************************"
 # Get IP address type
 output=$($prefixSnmpWalkCm $docsPnmBulkDestIpAddrType)
 echo "IP Address Type (1=IPv4, 2=IPv6):"
-echo "$output\n"
+echo -e "$output\n"
 
 # Get TFTP Server IP address
 output=$($prefixSnmpWalkCm $docsPnmBulkDestIpAddr)
 echo "TFTP Server IP Address in Hex Notation:"
-echo "$output\n"
+echo -e "$output\n"
 
 # Get TFTP Server directory
 output=$($prefixSnmpWalkCm $docsPnmBulkDestPath)
 echo "TFTP Server directory path (Should be blank):"
-echo "$output\n"
+echo -e "$output\n"
 
 # Get TFTP Upload status
 output=$($prefixSnmpWalkCm $docsPnmBulkUploadControl)
 echo "TFTP Upload Status (1=other, 2=noAutoUpload, 3=AutoUpload):"
-echo "$output\n"
+echo -e "$output\n"
 
 # Get Modem Upload type INTEGER { other ( 1 ), tftpUpload ( 2 ), cancelUpload ( 3 ), deleteFile ( 4 ) }
 output=$($prefixSnmpWalkCm $docsPnmBulkFileControl)
 echo "TFTP Upload Status (other ( 1 ), tftpUpload ( 2 ), cancelUpload ( 3 ), deleteFile ( 4 )):"
-echo "$output\n"
+echo -e "$output\n"
 
 docsPnmCmCtlTest='.1.3.6.1.4.1.4491.2.1.27.1.2.1.1'
 docsPnmCmCtlTestDuration='.1.3.6.1.4.1.4491.2.1.27.1.2.1.2' # in seconds
@@ -130,7 +130,7 @@ dsSpectrumAnalyzer='.1.3.6.1.4.1.4491.2.1.20.1.34.1.0'
 
 echo "*******************************************************************"
 echo "Set RxMER per Subcarrier Upload test."
-echo "*******************************************************************\n"
+echo -e "*******************************************************************\n"
 
 
 ifType='1.3.6.1.2.1.2.2.1.3'
@@ -145,11 +145,11 @@ trap "rm -f $tempFile" EXIT
 
 # Process the SNMP walk output and store it in a temporary file
 $prefixSnmpWalkCm $ifType | tr -d '\n' | sed 's/IF-MIB::ifType\./\nIF-MIB::ifType\./g' > $tempFile
-
 index=""
-
+<<'END_COMMENT'
 # Read from the temporary file
 while IFS= read -r line; do
+    echo $line
     if [[ $line =~ $ofdm ]]; then
         if [[ $line =~ IF-MIB::ifType\.([0-9]+) ]]; then
             index="${BASH_REMATCH[1]}"
@@ -166,6 +166,9 @@ else
     echo "OFDM channel index: $index"
 fi
 
+END_COMMENT
+
+index="79"
 
 docsPnmCmDsOfdmRxMerFileName=".1.3.6.1.4.1.4491.2.1.27.1.2.5.1.8.$index" # Set DS Rx MER file name
 echo $docsPnmCmDsOfdmRxMerFileName
@@ -180,15 +183,15 @@ dsOfdmRxMERPerSubCarEnable=".1.3.6.1.4.1.4491.2.1.27.1.2.5.1.1.$index"   # Enabl
 # Enable the desired test - Here we will enable dsOfdmRxMERPerSubCar(6)
 enable=$($prefixSnmpSetCm $dsOfdmRxMERPerSubCarEnable i 1)
 echo "RxMER is enabled (Result should be 1):"
-echo "$enable\n"
+echo -e "$enable\n"
 
 # Read test status to verify it is enabled (should return value of 6 - dsOfdmRxMERPerSubCar)
 currentTest=$($prefixSnmpWalkCm $docsPnmCmCtlTest)
 echo "Current Tests value is (should be 6 for RxMER):"
-echo "$currentTest\n"
+echo -e "$currentTest\n"
 
 # Check upload status
 docsPnmBulkFileUploadStatus='.1.3.6.1.4.1.4491.2.1.27.1.2.5.1.7'
 output=$($prefixSnmpWalkCm $docsPnmBulkFileUploadStatus)
 echo "Upload status availableForUpload(2), uploadInProgress(3), Completed(4), uploadPending(5), uploadCancelled(6), error(7):"
-echo "$output\n"
+echo -e "$output\n"
