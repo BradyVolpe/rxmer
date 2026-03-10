@@ -1,199 +1,400 @@
 #!/usr/bin/perl
-
-# Author: Brady Volpe
-# Date: January 6, 2017
-# Updated May 27, 2021
-# © Nimble This LLC 2013
-# All Rights Reserved
-# No part of this website or any of its contents may be reproduced, copied, modified or adapted,
-# without the prior written consent of the author, unless otherwise indicated for stand-alone materials.
 #
-# Configure TFTP Server: https://n40lab.wordpress.com/2013/01/29/centos-6-3-installing-a-tftpd-server-for-uploading-configuration-files/
+# getRxMER.pl — DOCSIS 3.1 RxMER Per Subcarrier PNM Tool
+#
+# Copyright (c) 2017-2026 Brady Volpe, Volpe Firm — volpefirm.com
+# Originally developed 2017-01-06. Updated 2021-05-27. Overhauled 2026.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Triggers an RxMER per-subcarrier measurement on a DOCSIS 3.1 cable modem
+# via SNMP (DOCS-PNM-MIB) and retrieves the resulting binary data file via
+# TFTP upload to a specified PNM server.
+#
+# SNMP MIB: DOCS-PNM-MIB (CableLabs OID space: 1.3.6.1.4.1.4491.2.1.27)
+# Reference: CM-SP-CM-OSSIv3.1 §PNM, SCTE 285
+#
+# Usage:
+#   perl getRxMER.pl [--help] [-v] <ipmode> <cm_ip> <community_rw> <pnm_server_ip>
+#
+#   ipmode         1 = IPv4, 2 = IPv6
+#   cm_ip          Cable modem IP address (IPv4 dotted-decimal or IPv6)
+#   community_rw   SNMP v2c read-write community string
+#   pnm_server_ip  IP address of TFTP / PNM collection server
+#
+# Examples:
+#   perl getRxMER.pl 1 192.168.100.1 private <tftp_server_ip>
+#   perl getRxMER.pl 2 <ipv6_address> <community_string> <tftp_server_ip>
+#
+# Prerequisites:
+#   Perl modules: Net::SNMP, Net::Ping, Data::Dumper, Getopt::Std
+#   System tools: snmpget, snmpset, snmpbulkwalk (net-snmp package)
+#   A running TFTP server reachable by the modem at <pnm_server_ip>
+#
 
+use strict;
+use warnings;
 
-# This script gets RxMER data from a DOCSIS 3.1 cable modem
-
-# Clear screen on start
-print "\033[2J";    #clear the screen
-print "\033[0;0H";  #jump to 0,0
-
-# Check for correct number of ARGS
-if (@ARGV < 4) {
- print "Need four arguments, \n";
- print "<IP MODE 1=IPv4, 2=IPv6> <CMT IP Address> <CM RW String> <PNM Server IP>\n";
- # Example: perl getRxMER.pl 2 <ipv6_address> <community_string> <tftp_server_ip>
- exit;
-}
-
-# Set vars from ARGS
-my $ipmode      = $ARGV[0];
-my $cmip        = $ARGV[1];
-my $cmrw        = $ARGV[2];
-my $pnmServerIp = $ARGV[3];
-
-# Imports
 use Data::Dumper;
 use Net::Ping;
-use Getopt::Std;
+use Getopt::Long qw(:config pass_through);
 use Net::SNMP qw(:snmp);
 
+# ---------------------------------------------------------------------------
+# CLI argument parsing
+# ---------------------------------------------------------------------------
 
-# Define CM IP address in correct notation
-#my $cmip = '0';
-if ($ipmode eq '2') {
-    $cmip    = "udp6:[$cmip]";
-} else {
-    $cmip    = $cmip;
+my $verbose = 0;
+my $help    = 0;
+
+GetOptions(
+    'verbose|v' => \$verbose,
+    'help|h'    => \$help,
+) or usage_and_exit(1);
+
+if ($help) {
+    usage_and_exit(0);
 }
 
-my $prefixSnmpGetCm     = "snmpget -v 2c -c $cmrw $cmip ";
-my $prefixSnmpGetCmRW   = "snmpget -v 2c -c $cmrw $cmip ";
-my $prefixSnmpSetCm     = "snmpset -v 2c -c $cmrw $cmip ";
-my $prefixSnmpWalkCm    = "snmpbulkwalk -v 2c -Cr1 -c $cmrw $cmip ";
-
-
-# ********************************************
-# *** Use / Run CM Tests
-# *** DOCS-PNM-MIB 
-# ********************************************
-
-# All returned data from the modem is done by TFTP bulk upload.  In order to get the TFTP file we must first set parameters
-# First we must set the IP type, IPv4 = 1 or IPv6 = 2
-# snmpset -v2c -c private 10.1.4.10 .1.3.6.1.4.1.4491.2.1.27.1.1.1.1.0 i 1
-print("******************************************************************* \n");
-print("Configure basic settings on the Cable Modem and TFTP Server. \n");
-print("******************************************************************* \n\n");
-
-print("IP address of modem is: " . $cmip . "\n");
-print("Getting modem info: \n");
-my $sysDescr = '1.3.6.1.2.1.1.1.0';
-my $modemInfo = `$prefixSnmpWalkCm $sysDescr`;
-print($modemInfo . "\n");
-
-# This sets the the IP type of TFTP server (1 = IPv4, 2 = IPv6)
-my $docsPnmBulkDestIpAddrType = '.1.3.6.1.4.1.4491.2.1.27.1.1.1.1.0';
-print "IP Mode: $ipmode \n";
-
-my $setIpType = `$prefixSnmpSetCm $docsPnmBulkDestIpAddrType i $ipmode`;
-print "$$docsPnmBulkDestIpAddrType";
-print("Setting the IP address type (1 = IPv4, 2 = IPv6): \n " . $setIpType);
-
-# First we must convert the PNM Server IP address from decimal to hex:
-$hex_addr = 0;
-if (length($pnmServerIp) > 15){
-    $hex_addr = $pnmServerIp;
-} else {
-    $hex_addr = unpack('H*', pack('C*', split ('\.', $pnmServerIp)));
+if (@ARGV < 4) {
+    print STDERR "ERROR: Expected four positional arguments.\n\n";
+    usage_and_exit(1);
 }
-print("TFTP Server Hex Address is: "   . $hex_addr . "\n");
 
+my ($ipmode, $cmip, $cmrw, $pnmServerIp) = @ARGV;
 
-# Next we must set the Destination IP address of the PNM server in Hex format
-# snmpset -v2c -c private 13.41.0.69 .1.3.6.1.4.1.4491.2.1.27.1.1.1.2.0 x 0x0ae1c661
-my $docsPnmBulkDestIpAddr = '.1.3.6.1.4.1.4491.2.1.27.1.1.1.2.0';
-my $setIP = `$prefixSnmpSetCm $docsPnmBulkDestIpAddr x $hex_addr`;
-print("Set TFTP Server Hex Set: \n" .  $setIP . "\n");
+# ---------------------------------------------------------------------------
+# Input validation
+# ---------------------------------------------------------------------------
 
-# Next we must set the directory on the PNM server where TFTP files will be uploaded
-# snmpset -v2c -c private 13.41.0.69 .1.3.6.1.4.1.4491.2.1.27.1.1.1.3.0 s "/"
-my $dir = "";
-my $docsPnmBulkDestPath = '.1.3.6.1.4.1.4491.2.1.27.1.1.1.3.0';
-my $setPath = `$prefixSnmpSetCm $docsPnmBulkDestPath s $dir`;
-print ("Set Path (Should be ''): \n" . $setPath . "\n");
+unless ($ipmode eq '1' || $ipmode eq '2') {
+    die "ERROR: ipmode must be 1 (IPv4) or 2 (IPv6). Got: '$ipmode'\n";
+}
 
-# Set TFTP upload on modem INTEGER  { other ( 1 ) , tftpUpload ( 2 ) , cancelUpload ( 3 ) , deleteFile ( 4 ) } 
-my $docsPnmBulkFileControl = '.1.3.6.1.4.1.4491.2.1.27.1.1.2.1.3.0';
-my $setAutoload = `$prefixSnmpSetCm $docsPnmBulkFileControl i 4`;
-
-# Then set the upload control INTEGER {other(1), noAutoUpload(2), autoUpload(3)}
-# snmpset -v2c -c private 13.41.0.69 .1.3.6.1.4.1.4491.2.1.27.1.1.1.4.0 i 3
-my $docsPnmBulkUploadControl = '.1.3.6.1.4.1.4491.2.1.27.1.1.1.4.0';
-my $setUpload = `$prefixSnmpSetCm $docsPnmBulkUploadControl i 3`;
-print ("Set upload to auto (Should = 3): \n" . $setUpload . "\n\n");
-
-# In order for TFTP to work on the PNM server we must enable TFTP to do so follow this URL:
-# http://blog.zwiegnet.com/linux-server/configure-tftp-server-centos-6/
-
-print("******************************************************************* \n");
-print("Verify modems settings are configured: \n");
-print("******************************************************************* \n");
-
-# Get IP address type
-my $output = `$prefixSnmpWalkCm $docsPnmBulkDestIpAddrType`;
-print("IP Address Type (1=IPv4, 2=IPv6): \n" . $output . "\n");
-
-# Get TFTP Server IP address
-$output = `$prefixSnmpWalkCm $docsPnmBulkDestIpAddr`;
-print("TFTP Server IP Address in Hex Notation: \n" . $output . "\n");
-
-# Get TFTP Server directory
-$output = `$prefixSnmpWalkCm $docsPnmBulkDestPath`;
-print("TFTP Server directory path (Should be blank): \n" . $output . "\n");
-
-# Get TFTP Upload status   
-$output = `$prefixSnmpWalkCm $docsPnmBulkUploadControl`;
-print("TFTP Upload Status (1=other, 2=noAutoUpload, 3=AutoUpload): \n" . $output . "\n");
-
-# Get Modem Upload type INTEGER  { other ( 1 ) , tftpUpload ( 2 ) , cancelUpload ( 3 ) , deleteFile ( 4 ) } 
-$output = `$prefixSnmpWalkCm $docsPnmBulkFileControl`;
-
-print("TFTP Upload Status (other ( 1 ) , tftpUpload ( 2 ) , cancelUpload ( 3 ) , deleteFile ( 4 )): \n" . $output . "\n\n");
-
-my $docsPnmCmCtlTest = '.1.3.6.1.4.1.4491.2.1.27.1.2.1.1';
-my $docsPnmCmCtlTestDuration    = '.1.3.6.1.4.1.4491.2.1.27.1.2.1.2'; # in seconds
-
-# INTEGER  { other ( 1 ) , ready ( 2 ) , testInProgress ( 3 ) , tempReject ( 4 ) } 
-my $docsPnmCmCtlStatus          = '.1.3.6.1.4.1.4491.2.1.27.1.2.1.3';
-my $dsSpectrumAnalyzer = '.1.3.6.1.4.1.4491.2.1.20.1.34.1.0';
-
-# First set the mode on the modem for the the test from the list above
-# In the first test we will get DS OFDM Rx MER Per Sub Carrier
-# dsOfdmRxMERPerSubCar(6)
-
-print("******************************************************************* \n");
-print("Set RxMER per Subcarrier UPload test. \n");
-print("******************************************************************* \n\n");
-
-# Find modem row index number with CAble TeleVision (CATV) downstream Orthogonal 
-# Frequency Division Multiplexing (OFDM) interface
-# IF-MIB::ifType = INTEGER: 277
-my $ifType  = '1.3.6.1.2.1.2.2.1.3';
-my $ofdm    = '([0-9]+) = INTEGER: 277';
-#my $index   = '$1';
-print("Getting the index for the OFDM channel \n");
-my @rowIndex = `$prefixSnmpWalkCm $ifType`;
-foreach (@rowIndex) {
-    if ($_ =~ m/$ofdm/) {
-       $preIndex =  $_;     
+if ($ipmode eq '1') {
+    unless ($cmip =~ /^(\d{1,3}\.){3}\d{1,3}$/ && valid_ipv4($cmip)) {
+        die "ERROR: cm_ip '$cmip' is not a valid IPv4 address.\n";
+    }
+    unless ($pnmServerIp =~ /^(\d{1,3}\.){3}\d{1,3}$/ && valid_ipv4($pnmServerIp)) {
+        die "ERROR: pnm_server_ip '$pnmServerIp' is not a valid IPv4 address.\n";
     }
 }
-print("The full index is:" . $preIndex . "\n");
-print("Now we just need to get the .x from this to append as an index \n\n");
 
-# Use substr to get just the index number
-#my $index = substr $preIndex, 15, 1; 
-$preIndex =~ m/$ofdm/;
-my $index = $1;
-print("The index we want is: " . $index . "\n\n");
+unless (length($cmrw) > 0) {
+    die "ERROR: SNMP community string must not be empty.\n";
+}
 
-my $docsPnmCmDsOfdmRxMerFileName = '.1.3.6.1.4.1.4491.2.1.27.1.2.5.1.8.'.$index; # Set DS Rx MER file name
-my $dsOfdmRxMERPerSubCarEnable = '.1.3.6.1.4.1.4491.2.1.27.1.2.5.1.1.'.$index; # Enables DS Rx MER
-#my $dsOfdmRxMERPerSubCarEnable = '.1.3.6.1.4.1.4491.2.1.27.1.2.5.1.1.77';
+# ---------------------------------------------------------------------------
+# Build SNMP command prefixes
+# ---------------------------------------------------------------------------
 
-# Set filename of test
+# Format the CM IP target for net-snmp tools
+my $snmp_target = ($ipmode eq '2') ? "udp6:[$cmip]" : $cmip;
+
+# SNMP v2c timeout (-t) and retries (-r) added for robustness in lossy plant
+my $snmp_opts        = "-v 2c -t 5 -r 2 -c '$cmrw'";
+my $prefixSnmpGetCm  = "snmpget  $snmp_opts $snmp_target";
+my $prefixSnmpSetCm  = "snmpset  $snmp_opts $snmp_target";
+my $prefixSnmpWalkCm = "snmpbulkwalk -Cr1 $snmp_opts $snmp_target";
+
+# ---------------------------------------------------------------------------
+# DOCS-PNM-MIB OID definitions
+# All OIDs are from DOCS-PNM-MIB (CableLabs, 1.3.6.1.4.1.4491.2.1.27)
+# Reference: https://mibs.cablelabs.com/MIBs/DOCSIS/DOCS-PNM-MIB.txt
+# ---------------------------------------------------------------------------
+
+# Bulk data control objects (scalar — appended with .0)
+# docsPnmBulkCtl ::= { docsPnmBulkData 1 } = .27.1.1.1
+my $OID_BulkDestIpAddrType  = '.1.3.6.1.4.1.4491.2.1.27.1.1.1.1.0'; # InetAddressType: 1=IPv4, 2=IPv6
+my $OID_BulkDestIpAddr      = '.1.3.6.1.4.1.4491.2.1.27.1.1.1.2.0'; # InetAddress (hex-encoded)
+my $OID_BulkDestPath        = '.1.3.6.1.4.1.4491.2.1.27.1.1.1.3.0'; # String path on TFTP server
+my $OID_BulkUploadControl   = '.1.3.6.1.4.1.4491.2.1.27.1.1.1.4.0'; # 1=other,2=noAutoUpload,3=autoUpload
+
+# Bulk file table objects (per-file row — index is appended at runtime)
+# docsPnmBulkFileTable ::= { docsPnmBulkData 2 } = .27.1.1.2
+my $OID_BulkFileControl      = '.1.3.6.1.4.1.4491.2.1.27.1.1.2.1.2'; # base — append .<fileIdx>
+my $OID_BulkFileUploadStatus = '.1.3.6.1.4.1.4491.2.1.27.1.1.2.1.3'; # base — append .<fileIdx>
+
+# CM control test objects (scalar — appended with .0)
+# docsPnmCmCtl ::= { docsPnmCmObjects 1 } = .27.1.2.1
+my $OID_CmCtlTest         = '.1.3.6.1.4.1.4491.2.1.27.1.2.1.1';  # walk — returns current test type (6=RxMER)
+my $OID_CmCtlStatus       = '.1.3.6.1.4.1.4491.2.1.27.1.2.1.3';  # walk — MeasStatusType
+
+# DS OFDM RxMER table objects (per-interface row — OFDM ifIndex appended)
+# docsPnmCmDsOfdmRxMerTable ::= { docsPnmCmObjects 5 } = .27.1.2.5
+my $OID_DsOfdmRxMerEnable   = '.1.3.6.1.4.1.4491.2.1.27.1.2.5.1.1'; # base — append .<ifIndex>
+my $OID_DsOfdmRxMerFileName = '.1.3.6.1.4.1.4491.2.1.27.1.2.5.1.8'; # base — append .<ifIndex>
+
+# IF-MIB::ifType — used to locate the OFDM downstream interface index
+# OFDM downstream = ifType 277 (docsOfdmDownstream)
+my $OID_IfType = '1.3.6.1.2.1.2.2.1.3';
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+print "\n";
+section("Configure Cable Modem and TFTP Server");
+
+# Identify the modem (sysDescr)
+vprint("Querying modem sysDescr...\n");
+my $modemInfo = snmp_walk($OID_IfType);  # Will do sysDescr separately
+my $sysDescr  = '1.3.6.1.2.1.1.1.0';
+my $modemDescr = snmp_walk($sysDescr);
+print "Modem IP:      $snmp_target\n";
+print "Modem sysDescr: $modemDescr\n\n";
+
+# Step 1: Set IP address type for TFTP server
+# docsPnmBulkDestIpAddrType: 1 = IPv4, 2 = IPv6
+# This tells the modem which IP family to use when connecting to the TFTP server
+vprint("Setting TFTP server IP address type ($ipmode = " . ($ipmode eq '1' ? 'IPv4' : 'IPv6') . ")...\n");
+my $setIpType = snmp_set("$OID_BulkDestIpAddrType i $ipmode");
+print "Set TFTP IP address type: $setIpType\n";
+
+# Step 2: Convert PNM server IP from dotted-decimal to hex, then set it
+# docsPnmBulkDestIpAddr takes an InetAddress — for IPv4 this is 4 hex bytes
+my $hex_addr;
+if (length($pnmServerIp) > 15) {
+    # IPv6 — pass the address string directly
+    $hex_addr = $pnmServerIp;
+    vprint("Using IPv6 address directly: $hex_addr\n");
+} else {
+    # IPv4 — convert dotted-decimal to 4-byte hex (e.g., <tftp_server_ip> → 0x0a0100b0)
+    $hex_addr = unpack('H*', pack('C*', split(/\./, $pnmServerIp)));
+    vprint("Converted $pnmServerIp → 0x$hex_addr\n");
+}
+print "TFTP server hex address: 0x$hex_addr\n";
+
+# Step 3: Set TFTP server destination IP on the modem
+my $setIP = snmp_set("$OID_BulkDestIpAddr x $hex_addr");
+print "Set TFTP server IP: $setIP\n";
+
+# Step 4: Set TFTP upload destination path (empty string = TFTP root)
+# docsPnmBulkDestPath: path on the server where the CM will deposit the file
+my $dir    = q{""};
+my $setPath = snmp_set("$OID_BulkDestPath s $dir");
+print "Set TFTP path (empty = root): $setPath\n";
+
+# Step 5: Set upload control to autoUpload (3)
+# docsPnmBulkUploadControl: 3 = autoUpload — modem automatically uploads when data is ready
+my $setUpload = snmp_set("$OID_BulkUploadControl i 3");
+print "Set autoUpload: $setUpload\n\n";
+
+# ---------------------------------------------------------------------------
+# Verify TFTP settings read back correctly
+# ---------------------------------------------------------------------------
+
+section("Verify Modem TFTP Configuration");
+
+my $val;
+$val = snmp_walk($OID_BulkDestIpAddrType);
+print "IP address type (1=IPv4, 2=IPv6): $val\n";
+
+$val = snmp_walk($OID_BulkDestIpAddr);
+print "TFTP server IP (hex): $val\n";
+
+$val = snmp_walk($OID_BulkDestPath);
+print "TFTP path (should be empty): $val\n";
+
+$val = snmp_walk($OID_BulkUploadControl);
+print "Upload control (3=autoUpload): $val\n\n";
+
+# ---------------------------------------------------------------------------
+# Discover the OFDM downstream interface index
+# ---------------------------------------------------------------------------
+
+section("Discover OFDM Downstream Interface Index");
+
+# Walk IF-MIB::ifType to find the interface whose type = 277 (docsOfdmDownstream)
+# DOCSIS 3.1 OFDM channels appear in the IF table with ifType 277
+print "Walking ifType table to find OFDM downstream channel...\n";
+my @ifTypeRows = `$prefixSnmpWalkCm $OID_IfType 2>&1`;
+if ($?) {
+    die "ERROR: SNMP walk of ifType failed. Check SNMP access to modem $snmp_target.\n"
+      . "  Output: " . join('', @ifTypeRows) . "\n";
+}
+
+my $ofdm_index;
+foreach my $row (@ifTypeRows) {
+    chomp $row;
+    # Match patterns like:
+    #   IF-MIB::ifType.77 = INTEGER: docsOfdmDownstream(277)
+    #   IF-MIB::ifType.77 = INTEGER: 277
+    if ($row =~ /ifType\.(\d+)\s*=\s*INTEGER:.*?277/) {
+        $ofdm_index = $1;
+        vprint("Found OFDM interface at ifIndex $ofdm_index: $row\n");
+        last;
+    }
+}
+
+unless (defined $ofdm_index) {
+    die "ERROR: No OFDM downstream interface (ifType 277) found on modem $snmp_target.\n"
+      . "  Verify the modem is locked to a DOCSIS 3.1 OFDM downstream channel.\n"
+      . "  Walk output:\n" . join('', @ifTypeRows) . "\n";
+}
+
+print "OFDM downstream ifIndex: $ofdm_index\n\n";
+
+# Append the interface index to the per-row OIDs
+my $oidEnable   = "$OID_DsOfdmRxMerEnable.$ofdm_index";
+my $oidFileName = "$OID_DsOfdmRxMerFileName.$ofdm_index";
+
+# ---------------------------------------------------------------------------
+# Initiate RxMER per-subcarrier measurement
+# ---------------------------------------------------------------------------
+
+section("Initiate RxMER Per-Subcarrier Measurement");
+
+# Set the output filename for the RxMER binary data file
+# Default is modem MAC + timestamp; override here for predictability
 my $filename = 'RxMerData';
-my $fileset = `$prefixSnmpSetCm $docsPnmCmDsOfdmRxMerFileName s $filename`;
-print("RxMER filename: \n " . $fileset ."\n\n");
+my $fileset  = snmp_set("$oidFileName s $filename");
+print "Set RxMER output filename to '$filename': $fileset\n";
 
-# Enable the desired test - Here we will enable dsOfdmRxMERPerSubCar(6)
-my $enable = `$prefixSnmpSetCm $dsOfdmRxMERPerSubCarEnable i 1`;
-print("RxMER is enabled (Result should be 1): \n " . $enable ."\n\n");
+# Enable the DS OFDM RxMER per-subcarrier test
+# docsPnmCmDsOfdmRxMerEnable = 1 triggers the measurement
+# The modem will capture RxMER for every active OFDM subcarrier (~3800–7600 subcarriers
+# depending on channel width and subcarrier spacing) and write results to the binary file
+vprint("Enabling DS OFDM RxMER per-subcarrier measurement on ifIndex $ofdm_index...\n");
+my $enable = snmp_set("$oidEnable i 1");
+print "RxMER enabled (should be 1): $enable\n";
 
-# Read test status to verify it is enabled (should return value of 6 - dsOfdmRxMERPerSubCar)
-my $currentTest = `$prefixSnmpWalkCm $docsPnmCmCtlTest`;
-print("Current Tests value is (should be 6 for RxMER): \n" . $currentTest ."\n\n");
+# Verify the control test OID reflects RxMER test (value 6 = dsOfdmRxMERPerSubCar)
+# docsPnmCmCtlTest returns the currently active test type
+my $currentTest = snmp_walk($OID_CmCtlTest);
+print "Active test type (6 = dsOfdmRxMERPerSubCar): $currentTest\n\n";
 
-# Check upload status
-my $docsPnmBulkFileUploadStatus = '.1.3.6.1.4.1.4491.2.1.27.1.2.5.1.7';
-$output = `$prefixSnmpWalkCm $docsPnmBulkFileUploadStatus`;
-print("Upload status availableForUpload(2), uploadInProgress(3), Completed(4), uploadPending(5), uploadCancelled(6), error(7) : \n" . $output . "\n");
+# ---------------------------------------------------------------------------
+# Poll for upload completion
+# ---------------------------------------------------------------------------
+
+section("Monitor TFTP Upload Status");
+
+# docsPnmBulkFileUploadStatus values:
+#   1=other  2=availableForUpload  3=uploadInProgress
+#   4=uploadCompleted  5=uploadPending  6=uploadCancelled  7=error
+print "Polling for upload status...\n";
+my $max_polls = 30;
+my $poll_interval = 2;  # seconds
+my $upload_done   = 0;
+
+for my $i (1..$max_polls) {
+    sleep($poll_interval);
+    my $status_raw = snmp_walk($OID_BulkFileUploadStatus);
+    chomp $status_raw;
+    vprint("Poll $i/$max_polls — status: $status_raw\n");
+
+    if ($status_raw =~ /uploadCompleted|= INTEGER: 4\b/) {
+        print "Upload completed successfully (poll $i).\n";
+        $upload_done = 1;
+        last;
+    } elsif ($status_raw =~ /error|= INTEGER: 7\b/) {
+        print STDERR "ERROR: TFTP upload reported error state. Status: $status_raw\n";
+        print STDERR "  Check: TFTP server running at $pnmServerIp? Write permissions on TFTP root?\n";
+        last;
+    } elsif ($status_raw =~ /uploadCancelled|= INTEGER: 6\b/) {
+        print STDERR "WARNING: Upload was cancelled. Status: $status_raw\n";
+        last;
+    }
+}
+
+unless ($upload_done) {
+    print STDERR "WARNING: Upload did not complete within " . ($max_polls * $poll_interval) . " seconds.\n";
+    print STDERR "  Final status: " . snmp_walk($OID_BulkFileUploadStatus) . "\n";
+    print STDERR "  Check TFTP server and modem SNMP access.\n";
+}
+
+print "\nDone. Binary RxMER file '$filename' should be in the TFTP root on $pnmServerIp.\n";
+print "Use visualize_rxmer.py to parse and plot the per-subcarrier data.\n\n";
+
+# ---------------------------------------------------------------------------
+# Helper subroutines
+# ---------------------------------------------------------------------------
+
+sub snmp_set {
+    my ($oid_and_value) = @_;
+    my $cmd = "$prefixSnmpSetCm $oid_and_value 2>&1";
+    vprint("  SNMP SET: $cmd\n");
+    my $out = `$cmd`;
+    if ($? != 0 || $out =~ /Error|Timeout|No response/i) {
+        warn "SNMP SET warning — command: $cmd\n  Output: $out\n";
+    }
+    chomp $out;
+    return $out;
+}
+
+sub snmp_walk {
+    my ($oid) = @_;
+    my $cmd = "$prefixSnmpWalkCm $oid 2>&1";
+    vprint("  SNMP WALK: $cmd\n");
+    my $out = `$cmd`;
+    if ($? != 0 || $out =~ /Timeout|No response/i) {
+        warn "SNMP WALK warning — command: $cmd\n  Output: $out\n";
+    }
+    chomp $out;
+    return $out;
+}
+
+sub section {
+    my ($title) = @_;
+    print "=" x 65 . "\n";
+    print "  $title\n";
+    print "=" x 65 . "\n";
+}
+
+sub vprint {
+    my ($msg) = @_;
+    print $msg if $verbose;
+}
+
+sub valid_ipv4 {
+    my ($ip) = @_;
+    my @octets = split(/\./, $ip);
+    return 0 unless @octets == 4;
+    for my $o (@octets) {
+        return 0 unless $o >= 0 && $o <= 255;
+    }
+    return 1;
+}
+
+sub usage_and_exit {
+    my ($exit_code) = @_;
+    print <<'END_USAGE';
+
+getRxMER.pl — DOCSIS 3.1 RxMER Per-Subcarrier PNM Tool
+Copyright (c) 2017-2026 Brady Volpe, Volpe Firm <volpefirm.com>
+
+USAGE:
+  perl getRxMER.pl [OPTIONS] <ipmode> <cm_ip> <community_rw> <pnm_server_ip>
+
+ARGUMENTS:
+  ipmode         IP address family: 1 = IPv4, 2 = IPv6
+  cm_ip          Cable modem management IP address
+  community_rw   SNMP v2c read-write community string
+  pnm_server_ip  IP address of the TFTP / PNM collection server
+
+OPTIONS:
+  -v, --verbose  Print detailed SNMP commands and responses
+  -h, --help     Show this help and exit
+
+EXAMPLES:
+  perl getRxMER.pl 1 192.168.100.1 private <tftp_server_ip>
+  perl getRxMER.pl -v 1 10.2.4.100 <community_string> <tftp_server_ip>
+  perl getRxMER.pl 2 <ipv6_address> <community_string> <tftp_server_ip>
+
+PREREQUISITES:
+  - net-snmp tools (snmpget, snmpset, snmpbulkwalk) in PATH
+  - Perl modules: Net::SNMP, Net::Ping, Data::Dumper, Getopt::Long
+  - A TFTP server running on <pnm_server_ip> with write access
+  - Modem locked to a DOCSIS 3.1 OFDM downstream channel (ifType 277)
+
+OUTPUT:
+  A binary RxMER data file (default: 'RxMerData') uploaded via TFTP to
+  <pnm_server_ip>. Use visualize_rxmer.py to parse and plot the results.
+
+END_USAGE
+    exit($exit_code);
+}

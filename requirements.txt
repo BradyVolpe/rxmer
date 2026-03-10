@@ -1,0 +1,5 @@
+# getRxMER.py — runtime dependencies
+pysnmp>=4.4.12
+
+# visualize_rxmer.py — optional (required for plot generation)
+matplotlib>=3.5.0
